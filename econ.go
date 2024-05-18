@@ -3,13 +3,28 @@ package teeworldsecon
 import (
 	"fmt"
 	"net"
-	"strings"
+	"regexp"
+	"time"
 )
 
 const (
-	EconPasswordMessage        = "Enter password:"
-	EconAuthSuccessfullMessage = "Authentication successful. External console access granted."
-	EconAuthWrongMessage       = "Wrong password "
+	// Server TCP messages
+
+	EconPasswordMessage    = "Enter password:"
+	EconAuthSuccessMessage = "Authentication successful. External console access granted."
+	EconAuthFailMessage    = "Wrong password "
+	EconKickFailMessage    = "server: invalid client id to kick"
+
+	EconBanSuccessMessage = `net_ban: banned '.*' for \d+ minute`
+	EconBanFailMessage = `net_ban: ban error`
+
+	// Server offsets before messages
+
+	EconBaseOffset   = 22
+	EconServerOffset = EconBaseOffset + 8
+
+	// Server TCP connection specifications
+	EconServerDuration = 5
 )
 
 // Econ client controller
@@ -67,40 +82,84 @@ func (econ *Econ) Connect() error {
 	return nil
 }
 
-// Authenticate to the econ server
-func (econ *Econ) Auth() error {
-	var bufString string
-
+func (econ *Econ) Send(payload string) error {
 	if econ.conn == nil {
 		return fmt.Errorf("missing connection")
 	}
 
-	buf := make([]byte, 256)
-	conn := *econ.conn
-
-	_, err := conn.Write([]byte(econ.config.Password + "\n"))
+	_, err := (*econ.conn).Write([]byte(payload + "\n"))
 	if err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func (econ *Econ) readWithTimeout(b []byte) error {
+	if econ.conn == nil {
+		return fmt.Errorf("missing connection")
+	}
+
+	deadline := time.Now().Add(EconServerDuration * time.Second)
+
+    err := (*econ.conn).SetReadDeadline(deadline);
+	if err != nil {
+        return fmt.Errorf("failed to set read deadline: %v", err)
+    }
+
+	_, err = (*econ.conn).Read(b)
+	if err != nil {
+		return err
+	}
+	
+	return nil
+}
+
+func (econ *Econ) waitResponse(
+	successMessage string,
+	failMessage string,
+) error {
+	var s string
+
+	b := make([]byte, 256)
+
 	for {
-		_, err := conn.Read(buf)
+		err := econ.readWithTimeout(b)
 		if err != nil {
 			return err
 		}
 
-		bufString = string(buf)
+		s = string(b)
 
-		if strings.HasPrefix(bufString, EconAuthSuccessfullMessage) {
-			break
+		ok, _ := regexp.MatchString(failMessage, s)
+		if ok {
+			return fmt.Errorf(s)
 		}
 
-		if strings.HasPrefix(bufString, EconAuthWrongMessage) {
-			return fmt.Errorf("authentication failed: %s", bufString)
+		ok, _ = regexp.MatchString(successMessage, s)
+		if ok {
+			break
 		}
 	}
 
 	return nil
+}
+
+// Authenticate to the econ server
+func (econ *Econ) Auth() error {
+	if econ.conn == nil {
+		return fmt.Errorf("missing connection")
+	}
+
+	err := econ.Send(econ.config.Password)
+	if err != nil {
+		return err
+	}
+
+	return econ.waitResponse(
+		EconAuthSuccessMessage,
+		EconAuthFailMessage,
+	)
 }
 
 // Disconnect from the econ server
@@ -110,4 +169,56 @@ func (econ *Econ) Disconnect() error {
 	}
 
 	return (*econ.conn).Close()
+}
+
+func (econ *Econ) Say(payload string) error {
+	return econ.Send(fmt.Sprintf("say %s", payload))
+}
+
+func (econ *Econ) Broadcast(payload string) error {
+	return econ.Send(fmt.Sprintf("broadcast %s", payload))
+}
+
+func (econ *Econ) Kick(id uint8, reason string) error {
+	var m string
+
+	payload := fmt.Sprintf("kick %d", id)
+
+	if reason != "" {
+		payload += " " + reason
+		m = fmt.Sprintf(`Kicked \(%s\)`, reason)
+	} else {
+		m = "Kicked by console"
+	}
+
+	m = fmt.Sprintf(`\(%s\)`, m)
+
+	err := econ.Send(payload)
+	if err != nil {
+		return err
+	}
+
+	return econ.waitResponse(
+		m,
+		EconKickFailMessage,
+	)
+}
+
+func (econ *Econ) Ban(player string, minutes int, reason string) error {
+	payload := fmt.Sprintf(
+		"ban %s %d %s",
+		player,
+		minutes,
+		reason,
+	)
+
+	err := econ.Send(payload)
+	if err != nil {
+		return err
+	}
+
+	return econ.waitResponse(
+		EconBanSuccessMessage,
+		EconBanFailMessage,
+	)
 }
