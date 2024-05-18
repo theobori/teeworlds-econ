@@ -1,6 +1,7 @@
 package teeworldsecon
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"regexp"
@@ -8,24 +9,19 @@ import (
 )
 
 const (
-	// Server TCP messages
-
 	EconPasswordMessage    = "Enter password:"
 	EconAuthSuccessMessage = "Authentication successful. External console access granted."
 	EconAuthFailMessage    = "Wrong password "
-	EconKickFailMessage    = "server: invalid client id to kick"
-
-	EconBanSuccessMessage = `net_ban: banned '.*' for \d+ minute`
-	EconBanFailMessage = `net_ban: ban error`
-
-	// Server offsets before messages
-
-	EconBaseOffset   = 22
-	EconServerOffset = EconBaseOffset + 8
-
-	// Server TCP connection specifications
-	EconServerDuration = 5
+	EconServerDuration     = 5
 )
+
+// Represents a Econ response
+type EconResponse struct {
+	// Raw value
+	Value string
+	// Indicates the response state, true if success
+	State bool
+}
 
 // Econ client controller
 type Econ struct {
@@ -33,13 +29,24 @@ type Econ struct {
 	config *EconConfig
 	// TCP Socket
 	conn *net.Conn
+
+	// Channels
+	// Event channel
+	eventCh chan string
+	// Response channel
+	responseCh chan EconResponse
+	// Closed connection channel
+	doneCh chan any
 }
 
 // Create a Econ struct
 func NewEcon(config *EconConfig) *Econ {
 	return &Econ{
-		config: config,
-		conn:   nil,
+		config:     config,
+		conn:       nil,
+		eventCh:    make(chan string),
+		responseCh: make(chan EconResponse),
+		doneCh:     make(chan any),
 	}
 }
 
@@ -82,6 +89,41 @@ func (econ *Econ) Connect() error {
 	return nil
 }
 
+// Goroutine for event listening
+func (econ *Econ) listenEvents(errCh chan error) {
+	if econ.conn == nil {
+		errCh <- fmt.Errorf("missing connection")
+		return
+	} else {
+		errCh <- nil
+	}
+
+	scanner := bufio.NewScanner(*econ.conn)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		econ.eventCh <- line
+	}
+
+	close(econ.doneCh)
+}
+
+// Start listening events
+func (econ *Econ) ListenEvents() error {
+	errCh := make(chan error)
+
+	go econ.listenEvents(errCh)
+
+	err := <-errCh
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Send a payload to the Econ server
 func (econ *Econ) Send(payload string) error {
 	if econ.conn == nil {
 		return fmt.Errorf("missing connection")
@@ -95,68 +137,77 @@ func (econ *Econ) Send(payload string) error {
 	return nil
 }
 
-func (econ *Econ) readWithTimeout(b []byte) error {
-	if econ.conn == nil {
-		return fmt.Errorf("missing connection")
-	}
-
-	deadline := time.Now().Add(EconServerDuration * time.Second)
-
-    err := (*econ.conn).SetReadDeadline(deadline);
-	if err != nil {
-        return fmt.Errorf("failed to set read deadline: %v", err)
-    }
-
-	_, err = (*econ.conn).Read(b)
-	if err != nil {
-		return err
-	}
-	
-	return nil
-}
-
+// Wait for a server response
 func (econ *Econ) waitResponse(
 	successMessage string,
 	failMessage string,
-) error {
-	var s string
-
-	b := make([]byte, 256)
-
-	for {
-		err := econ.readWithTimeout(b)
-		if err != nil {
-			return err
-		}
-
-		s = string(b)
-
-		ok, _ := regexp.MatchString(failMessage, s)
-		if ok {
-			return fmt.Errorf(s)
-		}
-
-		ok, _ = regexp.MatchString(successMessage, s)
-		if ok {
-			break
-		}
+) (*EconResponse, error) {
+	if econ.conn == nil {
+		return nil, fmt.Errorf("missing connection")
 	}
 
-	return nil
+	go func() {
+		var line string
+
+		response := EconResponse{}
+		scanner := bufio.NewScanner(*econ.conn)
+
+		for scanner.Scan() {
+			line = scanner.Text()
+
+			ok, _ := regexp.MatchString(failMessage, line)
+			if ok {
+				response.State = false
+				break
+			}
+
+			ok, _ = regexp.MatchString(successMessage, line)
+			if ok {
+				response.State = true
+				break
+			}
+		}
+
+		response.Value = line
+
+		econ.responseCh <- response
+	}()
+
+	select {
+	case response := <-econ.responseCh:
+		return &response, nil
+	case <-time.After(EconServerDuration * time.Second):
+		return nil, fmt.Errorf("timeout waiting for response")
+	}
+}
+
+// Send a payload then wait for its response
+func (econ *Econ) SendAndWaitResponse(
+	payload string,
+	successMessage string,
+	failMessage string,
+) (*EconResponse, error) {
+	err := econ.Send(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	response, err := econ.waitResponse(
+		successMessage,
+		failMessage,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return response, nil
 }
 
 // Authenticate to the econ server
-func (econ *Econ) Auth() error {
-	if econ.conn == nil {
-		return fmt.Errorf("missing connection")
-	}
-
-	err := econ.Send(econ.config.Password)
-	if err != nil {
-		return err
-	}
-
-	return econ.waitResponse(
+func (econ *Econ) Auth() (*EconResponse, error) {
+	return econ.SendAndWaitResponse(
+		econ.config.Password,
 		EconAuthSuccessMessage,
 		EconAuthFailMessage,
 	)
@@ -169,60 +220,4 @@ func (econ *Econ) Disconnect() error {
 	}
 
 	return (*econ.conn).Close()
-}
-
-// Teeworlds say command
-func (econ *Econ) Say(payload string) error {
-	return econ.Send(fmt.Sprintf("say %s", payload))
-}
-
-// Teeworlds broadcast command
-func (econ *Econ) Broadcast(payload string) error {
-	return econ.Send(fmt.Sprintf("broadcast %s", payload))
-}
-
-// Teeworlds kick command
-func (econ *Econ) Kick(id uint8, reason string) error {
-	var m string
-
-	payload := fmt.Sprintf("kick %d", id)
-
-	if reason != "" {
-		payload += " " + reason
-		m = fmt.Sprintf(`Kicked \(%s\)`, reason)
-	} else {
-		m = "Kicked by console"
-	}
-
-	m = fmt.Sprintf(`\(%s\)`, m)
-
-	err := econ.Send(payload)
-	if err != nil {
-		return err
-	}
-
-	return econ.waitResponse(
-		m,
-		EconKickFailMessage,
-	)
-}
-
-// Teeworlds ban command
-func (econ *Econ) Ban(player string, minutes int, reason string) error {
-	payload := fmt.Sprintf(
-		"ban %s %d %s",
-		player,
-		minutes,
-		reason,
-	)
-
-	err := econ.Send(payload)
-	if err != nil {
-		return err
-	}
-
-	return econ.waitResponse(
-		EconBanSuccessMessage,
-		EconBanFailMessage,
-	)
 }
