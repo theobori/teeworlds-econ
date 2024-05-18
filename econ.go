@@ -132,6 +132,8 @@ func (econ *Econ) HandleEvents() {
 	for {
 		data := <-econ.eventCh
 
+		Debug(data)
+
 		econ.EventManager.Call(data)
 	}
 }

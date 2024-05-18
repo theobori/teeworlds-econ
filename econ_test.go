@@ -1,6 +1,8 @@
 package teeworldsecon
 
 import (
+	"os"
+	"strconv"
 	"testing"
 )
 
@@ -10,10 +12,16 @@ const (
 )
 
 func defaultEcon() *Econ {
+	value, err := strconv.ParseUint(os.Getenv("ECON_PORT"), 10, 16)
+
+	if err != nil {
+		value = econPort
+	}
+
 	return NewEcon(
 		NewDefaultEconConfig(
-			econPort,
-			econPassword,
+			uint16(value),
+			os.Getenv("ECON_PASSWORD"),
 		),
 	)
 }
