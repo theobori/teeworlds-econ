@@ -12,7 +12,7 @@ const (
 	EconPasswordMessage    = "Enter password:"
 	EconAuthSuccessMessage = "Authentication successful. External console access granted."
 	EconAuthFailMessage    = "Wrong password "
-	EconServerDuration     = 5
+	EconResponseDuration   = 5
 )
 
 // Represents a Econ response
@@ -37,16 +37,20 @@ type Econ struct {
 	responseCh chan EconResponse
 	// Closed connection channel
 	doneCh chan any
+
+	// Event manager
+	EventManager *EconEventManager
 }
 
 // Create a Econ struct
 func NewEcon(config *EconConfig) *Econ {
 	return &Econ{
-		config:     config,
-		conn:       nil,
-		eventCh:    make(chan string),
-		responseCh: make(chan EconResponse),
-		doneCh:     make(chan any),
+		config:       config,
+		conn:         nil,
+		eventCh:      make(chan string),
+		responseCh:   make(chan EconResponse),
+		doneCh:       make(chan any),
+		EventManager: NewEconEventManager(),
 	}
 }
 
@@ -123,6 +127,15 @@ func (econ *Econ) ListenEvents() error {
 	return nil
 }
 
+// The event manager calls the functions mapped with certain events
+func (econ *Econ) HandleEvents() {
+	for {
+		data := <-econ.eventCh
+
+		econ.EventManager.Call(data)
+	}
+}
+
 // Send a payload to the Econ server
 func (econ *Econ) Send(payload string) error {
 	if econ.conn == nil {
@@ -176,7 +189,7 @@ func (econ *Econ) waitResponse(
 	select {
 	case response := <-econ.responseCh:
 		return &response, nil
-	case <-time.After(EconServerDuration * time.Second):
+	case <-time.After(EconResponseDuration * time.Second):
 		return nil, fmt.Errorf("timeout waiting for response")
 	}
 }

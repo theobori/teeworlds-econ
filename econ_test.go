@@ -30,6 +30,7 @@ func econConnectAndAuth(econ *Econ, t *testing.T) *Econ {
 	return econ
 }
 
+// Testing the econ server connection
 func TestEconConnect(t *testing.T) {
 	econ := defaultEcon()
 
