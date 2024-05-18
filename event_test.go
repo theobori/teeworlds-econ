@@ -17,7 +17,9 @@ func TestEconEventManager(t *testing.T) {
 		},
 	)
 
-	em.Register(playerChat)
+	if err := em.Register(playerChat); err != nil {
+		t.Error(err)
+	}
 
 	em.Call("chat: hello_world1")
 	em.Call("chat: hello_world2")
