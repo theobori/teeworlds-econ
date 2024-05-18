@@ -171,14 +171,17 @@ func (econ *Econ) Disconnect() error {
 	return (*econ.conn).Close()
 }
 
+// Teeworlds say command
 func (econ *Econ) Say(payload string) error {
 	return econ.Send(fmt.Sprintf("say %s", payload))
 }
 
+// Teeworlds broadcast command
 func (econ *Econ) Broadcast(payload string) error {
 	return econ.Send(fmt.Sprintf("broadcast %s", payload))
 }
 
+// Teeworlds kick command
 func (econ *Econ) Kick(id uint8, reason string) error {
 	var m string
 
@@ -204,6 +207,7 @@ func (econ *Econ) Kick(id uint8, reason string) error {
 	)
 }
 
+// Teeworlds ban command
 func (econ *Econ) Ban(player string, minutes int, reason string) error {
 	payload := fmt.Sprintf(
 		"ban %s %d %s",
