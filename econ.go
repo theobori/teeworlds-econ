@@ -29,15 +29,10 @@ type Econ struct {
 	config *EconConfig
 	// TCP Socket
 	conn *net.Conn
-
-	// Channels
 	// Event channel
 	eventCh chan string
 	// Response channel
 	responseCh chan EconResponse
-	// Closed connection channel
-	doneCh chan any
-
 	// Event manager
 	EventManager *EconEventManager
 }
@@ -49,7 +44,6 @@ func NewEcon(config *EconConfig) *Econ {
 		conn:         nil,
 		eventCh:      make(chan string),
 		responseCh:   make(chan EconResponse),
-		doneCh:       make(chan any),
 		EventManager: NewEconEventManager(),
 	}
 }
@@ -77,9 +71,22 @@ func (econ *Econ) Connect() error {
 		return err
 	}
 
+	// Set deadline
+	deadline := time.Now().Add(EconResponseDuration * time.Second)
+	err = conn.SetDeadline(deadline)
+	if err != nil {
+		return err
+	}
+
 	buf := make([]byte, len(EconPasswordMessage))
 
 	_, err = conn.Read(buf)
+	if err != nil {
+		return err
+	}
+
+	// Remove deadline
+	err = conn.SetDeadline(time.Time{})
 	if err != nil {
 		return err
 	}
@@ -98,9 +105,9 @@ func (econ *Econ) listenEvents(errCh chan error) {
 	if econ.conn == nil {
 		errCh <- fmt.Errorf("missing connection")
 		return
-	} else {
-		errCh <- nil
 	}
+
+	errCh <- nil
 
 	scanner := bufio.NewScanner(*econ.conn)
 
@@ -108,8 +115,6 @@ func (econ *Econ) listenEvents(errCh chan error) {
 		line := scanner.Text()
 		econ.eventCh <- line
 	}
-
-	close(econ.doneCh)
 }
 
 // Start listening events
@@ -153,7 +158,7 @@ func (econ *Econ) Send(payload string) error {
 }
 
 // Wait for a server response
-func (econ *Econ) waitResponse(
+func (econ *Econ) WaitResponse(
 	successMessage string,
 	failMessage string,
 ) (*EconResponse, error) {
@@ -161,11 +166,14 @@ func (econ *Econ) waitResponse(
 		return nil, fmt.Errorf("missing connection")
 	}
 
-	go func() {
+	errCh := make(chan error)
+
+	go func(errCh chan error) {
 		var line string
 
 		response := EconResponse{}
 		scanner := bufio.NewScanner(*econ.conn)
+		found := false
 
 		for scanner.Scan() {
 			line = scanner.Text()
@@ -173,24 +181,38 @@ func (econ *Econ) waitResponse(
 			ok, _ := regexp.MatchString(failMessage, line)
 			if ok {
 				response.State = false
+				found = true
 				break
 			}
 
 			ok, _ = regexp.MatchString(successMessage, line)
 			if ok {
 				response.State = true
+				found = true
 				break
 			}
 		}
 
 		response.Value = line
 
+		if err := scanner.Err(); err != nil {
+			errCh <- err
+			return
+		}
+
+		if !found {
+			errCh <- fmt.Errorf("cannot get an acceptable response")
+			return
+		}
+
 		econ.responseCh <- response
-	}()
+	}(errCh)
 
 	select {
 	case response := <-econ.responseCh:
 		return &response, nil
+	case err := <-errCh:
+		return nil, err
 	case <-time.After(EconResponseDuration * time.Second):
 		return nil, fmt.Errorf("timeout waiting for response")
 	}
@@ -207,7 +229,7 @@ func (econ *Econ) SendAndWaitResponse(
 		return nil, err
 	}
 
-	response, err := econ.waitResponse(
+	response, err := econ.WaitResponse(
 		successMessage,
 		failMessage,
 	)
@@ -220,7 +242,7 @@ func (econ *Econ) SendAndWaitResponse(
 }
 
 // Authenticate to the econ server
-func (econ *Econ) Auth() (*EconResponse, error) {
+func (econ *Econ) Authenticate() (*EconResponse, error) {
 	return econ.SendAndWaitResponse(
 		econ.config.Password,
 		EconAuthSuccessMessage,
@@ -235,4 +257,17 @@ func (econ *Econ) Disconnect() error {
 	}
 
 	return (*econ.conn).Close()
+}
+
+func (econ *Econ) Reconnect() error {
+	Debug("waiting for %s", econ.address())
+
+	for {
+		err := econ.Connect()
+		if err == nil {
+			break
+		}
+	}
+
+	return nil
 }
