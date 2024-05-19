@@ -7,8 +7,7 @@ import (
 )
 
 const (
-	econPort     = 7000
-	econPassword = "hello_world"
+	econPort = 7000
 )
 
 func defaultEcon() *Econ {
@@ -31,7 +30,7 @@ func econConnectAndAuth(econ *Econ, t *testing.T) *Econ {
 		t.Error(err)
 	}
 
-	if _, err := econ.Auth(); err != nil {
+	if _, err := econ.Authenticate(); err != nil {
 		t.Error(err)
 	}
 
@@ -50,7 +49,7 @@ func TestEconKick(t *testing.T) {
 	econ := econConnectAndAuth(defaultEcon(), t)
 
 	if r, err := econ.Kick(0, "reason"); err != nil || r.State {
-		t.Error()
+		t.Error(err)
 	}
 }
 
@@ -59,6 +58,6 @@ func TestEconBan(t *testing.T) {
 	econ := econConnectAndAuth(defaultEcon(), t)
 
 	if r, err := econ.Ban("3", 10, "reason"); err != nil || r.State {
-		t.Error()
+		t.Error(err)
 	}
 }
