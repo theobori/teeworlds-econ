@@ -1,0 +1,57 @@
+name: tests
+
+on:
+  push:
+    branches:
+      - release
+
+jobs:
+  tests:
+    runs-on: ubuntu-20.04
+
+    env:
+      ECON_PORT: 1234
+      ECON_PASSWORD: "hello_world"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version: '1.22.3'
+      - run: go version
+
+      - name: Create myServerconfig.cfg
+        run: |
+          cat <<EOF > myServerconfig.cfg
+          ec_port $ECON_PORT
+          ec_password $ECON_PASSWORD
+          ec_output_level 2
+          EOF
+      
+      - name: Pull Docker image
+        run: docker pull ich777/ddnetserver:latest
+
+      - name: Run a DDNet server as a Docker container
+        run: |
+          docker run -d \
+          --name Teeworlds \
+          -p $ECON_PORT:$ECON_PORT \
+          -v $PWD/myServerconfig.cfg:/serverdata/serverfiles/DDNet/myServerconfig.cfg \
+          --env 'GAME_CONFIG=autoexec.cfg' \
+          --env 'UID=99' \
+          --env 'GID=100' \
+          ich777/ddnetserver:latest
+      
+      - name: Docker container logs
+        run: sleep 10 && docker logs Teeworlds
+      
+      - name: Run the tests
+        run: ECON_DEBUG=1 make test
+      
+      # Prevention for the `act` tool
+      - name: Stop and remove the Docker container
+        run: |
+          docker stop Teeworlds
+          docker rm Teeworlds
