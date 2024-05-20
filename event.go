@@ -1,7 +1,7 @@
 package teeworldsecon
 
 // Function prototype used when an event is handled
-type EconEventFunc func(eventPayload string) any
+type EconEventFunc func(econ *Econ, eventPayload string) any
 
 // Represents an event
 type EconEvent struct {

@@ -18,6 +18,8 @@ EOF
 # Create a container
 docker run --name ${CONTAINER_NAME} -d \
   -p ${ECON_PORT}:${ECON_PORT} \
+  -p 8303:8303 \
+  -p 8303:8303/udp \
   -v $PWD/myServerconfig.cfg:/serverdata/serverfiles/DDNet/myServerconfig.cfg \
   --env 'GAME_CONFIG=autoexec.cfg' \
   --env 'UID=1000' \

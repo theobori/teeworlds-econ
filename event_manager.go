@@ -105,7 +105,7 @@ func (em *EconEventManager) Delete(name string) {
 }
 
 // Call every matching event
-func (em *EconEventManager) Handle(eventPayload string) {
+func (em *EconEventManager) Handle(econ *Econ, eventPayload string) {
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
@@ -117,7 +117,7 @@ func (em *EconEventManager) Handle(eventPayload string) {
 			continue
 		}
 
-		r := event.Func(eventPayload)
+		r := event.Func(econ, eventPayload)
 		if r != nil {
 			eventEntry.mu.Lock()
 			eventEntry.queue = append(eventEntry.queue, r)

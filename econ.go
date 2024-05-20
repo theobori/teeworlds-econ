@@ -142,7 +142,9 @@ func (econ *Econ) listenEvents() error {
 	return nil
 }
 
-// The event manager calls the functions mapped with certain events
+// Control loop for the events, calling function
+// registered with the event manager
+// that match the current event
 func (econ *Econ) HandleEvents() {
 	eventCh := make(chan string, 1)
 
@@ -151,7 +153,7 @@ func (econ *Econ) HandleEvents() {
 	for {
 		data := <-eventCh
 
-		econ.EventManager.Handle(data)
+		econ.EventManager.Handle(econ, data)
 	}
 }
 
