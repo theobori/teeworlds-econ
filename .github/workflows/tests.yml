@@ -7,7 +7,7 @@ on:
 
 jobs:
   tests:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
 
     env:
       ECON_PORT: 1234
@@ -29,20 +29,9 @@ jobs:
           ec_password $ECON_PASSWORD
           ec_output_level 2
           EOF
-      
-      - name: Pull Docker image
-        run: docker pull ich777/ddnetserver:latest
 
       - name: Run a DDNet server as a Docker container
-        run: |
-          docker run -d \
-          --name Teeworlds \
-          -p $ECON_PORT:$ECON_PORT \
-          -v $PWD/myServerconfig.cfg:/serverdata/serverfiles/DDNet/myServerconfig.cfg \
-          --env 'GAME_CONFIG=autoexec.cfg' \
-          --env 'UID=99' \
-          --env 'GID=100' \
-          ich777/ddnetserver:latest
+        run: ./econ_server.sh
       
       - name: Docker container logs
         run: sleep 10 && docker logs Teeworlds

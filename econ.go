@@ -99,22 +99,16 @@ func (econ *Econ) Connect() error {
 	econ.conn = &conn
 
 	// Start listening events
-	err = econ.listenEvents()
-	if err != nil {
-		return err
-	}
+	go econ.listenEvents()
 
 	return nil
 }
 
-// Goroutine for event listening
-func (econ *Econ) goListenEvents(errCh chan error) {
+// Listening the server events
+func (econ *Econ) listenEvents()  {
 	if econ.conn == nil {
-		errCh <- fmt.Errorf("missing connection")
-		return
+		teeworldsecon.Debug("missing connection")
 	}
-
-	errCh <- nil
 
 	scanner := bufio.NewScanner(*econ.conn)
 
@@ -125,21 +119,11 @@ func (econ *Econ) goListenEvents(errCh chan error) {
 		// Send to the reponse channels if needed
 		econ.reponseManager.Send(line)
 	}
-}
 
-// Start listening events
-func (econ *Econ) listenEvents() error {
-	errCh := make(chan error)
-
-	go econ.goListenEvents(errCh)
-
-	err := <-errCh
-
+	err := scanner.Err()
 	if err != nil {
-		return err
+		teeworldsecon.Debug("%v", err)
 	}
-
-	return nil
 }
 
 // Control loop for the events, calling function
@@ -177,7 +161,6 @@ func (econ *Econ) WaitResponse(successMessage string, failMessage string) (*Econ
 		return nil, fmt.Errorf("missing connection")
 	}
 
-	errCh := make(chan error, 1)
 	responseCh := make(chan EconResponse, 1)
 	payloadCh := make(chan string, 1)
 
@@ -186,12 +169,10 @@ func (econ *Econ) WaitResponse(successMessage string, failMessage string) (*Econ
 	go func(
 		payloadCh chan string,
 		responseCh chan EconResponse,
-		errCh chan error,
 	) {
 		var line string
 
 		response := EconResponse{}
-		found := false
 
 		for {
 			line = <-payloadCh
@@ -199,35 +180,26 @@ func (econ *Econ) WaitResponse(successMessage string, failMessage string) (*Econ
 			ok, _ := regexp.MatchString(failMessage, line)
 			if ok {
 				response.State = false
-				found = true
 				break
 			}
 
 			ok, _ = regexp.MatchString(successMessage, line)
 			if ok {
 				response.State = true
-				found = true
 				break
 			}
 		}
 
 		response.Value = line
 
-		if !found {
-			errCh <- fmt.Errorf("cannot get an acceptable response")
-			return
-		}
-
 		responseCh <- response
-	}(payloadCh, responseCh, errCh)
+	}(payloadCh, responseCh)
 
 	defer econ.reponseManager.Delete(id)
 
 	select {
 	case response := <-responseCh:
 		return &response, nil
-	case err := <-errCh:
-		return nil, err
 	case <-time.After(EconResponseDuration * time.Second):
 		return nil, fmt.Errorf("timeout waiting for response")
 	}
@@ -268,18 +240,4 @@ func (econ *Econ) Disconnect() error {
 	}
 
 	return (*econ.conn).Close()
-}
-
-// Indefinitely try to reconnect to the econ server
-func (econ *Econ) Reconnect() error {
-	teeworldsecon.Debug("waiting for %s", econ.address())
-
-	for {
-		err := econ.Connect()
-		if err == nil {
-			break
-		}
-	}
-
-	return nil
 }
