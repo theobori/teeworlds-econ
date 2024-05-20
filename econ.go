@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+
+	// "regexp"
 	"time"
 )
 
@@ -15,36 +17,34 @@ const (
 	EconResponseDuration   = 5
 )
 
-// Represents a Econ response
-type EconResponse struct {
-	// Raw value
-	Value string
-	// Indicates the response state, true if success
-	State bool
-}
-
 // Econ client controller
 type Econ struct {
+	// Server
 	// Econ server configuration
 	config *EconConfig
 	// TCP Socket
 	conn *net.Conn
-	// Event channel
-	eventCh chan string
-	// Response channel
-	responseCh chan EconResponse
+
+	// Managers
 	// Event manager
 	EventManager *EconEventManager
+	// Command manager
+	CommandManager *EconCommandManager
+	// Reponse manager
+	reponseManager *EconResponseManager
+	// Payload manager
+	payloadManager *EconResponseManager
 }
 
 // Create a Econ struct
 func NewEcon(config *EconConfig) *Econ {
 	return &Econ{
-		config:       config,
-		conn:         nil,
-		eventCh:      make(chan string),
-		responseCh:   make(chan EconResponse),
-		EventManager: NewEconEventManager(),
+		config:         config,
+		conn:           nil,
+		EventManager:   NewEconEventManager(),
+		CommandManager: NewEconCommandManager(),
+		reponseManager: NewEconResponseManager(),
+		payloadManager: NewEconResponseManager(),
 	}
 }
 
@@ -95,13 +95,20 @@ func (econ *Econ) Connect() error {
 		return fmt.Errorf("invalid econ server")
 	}
 
+	// Set the connection
 	econ.conn = &conn
+
+	// Start listening events
+	err = econ.listenEvents()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
 // Goroutine for event listening
-func (econ *Econ) listenEvents(errCh chan error) {
+func (econ *Econ) goListenEvents(errCh chan error) {
 	if econ.conn == nil {
 		errCh <- fmt.Errorf("missing connection")
 		return
@@ -113,15 +120,18 @@ func (econ *Econ) listenEvents(errCh chan error) {
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		econ.eventCh <- line
+		// Send to the event channels if needed
+		econ.payloadManager.Send(line)
+		// Send to the reponse channels if needed
+		econ.reponseManager.Send(line)
 	}
 }
 
 // Start listening events
-func (econ *Econ) ListenEvents() error {
+func (econ *Econ) listenEvents() error {
 	errCh := make(chan error)
 
-	go econ.listenEvents(errCh)
+	go econ.goListenEvents(errCh)
 
 	err := <-errCh
 
@@ -134,12 +144,14 @@ func (econ *Econ) ListenEvents() error {
 
 // The event manager calls the functions mapped with certain events
 func (econ *Econ) HandleEvents() {
+	eventCh := make(chan string, 1)
+
+	econ.payloadManager.Add(eventCh)
+
 	for {
-		data := <-econ.eventCh
+		data := <-eventCh
 
-		Debug(data)
-
-		econ.EventManager.Call(data)
+		econ.EventManager.Handle(data)
 	}
 }
 
@@ -158,25 +170,29 @@ func (econ *Econ) Send(payload string) error {
 }
 
 // Wait for a server response
-func (econ *Econ) WaitResponse(
-	successMessage string,
-	failMessage string,
-) (*EconResponse, error) {
+func (econ *Econ) WaitResponse(successMessage string, failMessage string) (*EconResponse, error) {
 	if econ.conn == nil {
 		return nil, fmt.Errorf("missing connection")
 	}
 
-	errCh := make(chan error)
+	errCh := make(chan error, 1)
+	responseCh := make(chan EconResponse, 1)
+	payloadCh := make(chan string, 1)
 
-	go func(errCh chan error) {
+	id := econ.reponseManager.Add(payloadCh)
+
+	go func(
+		payloadCh chan string,
+		responseCh chan EconResponse,
+		errCh chan error,
+	) {
 		var line string
 
 		response := EconResponse{}
-		scanner := bufio.NewScanner(*econ.conn)
 		found := false
 
-		for scanner.Scan() {
-			line = scanner.Text()
+		for {
+			line = <-payloadCh
 
 			ok, _ := regexp.MatchString(failMessage, line)
 			if ok {
@@ -195,21 +211,18 @@ func (econ *Econ) WaitResponse(
 
 		response.Value = line
 
-		if err := scanner.Err(); err != nil {
-			errCh <- err
-			return
-		}
-
 		if !found {
 			errCh <- fmt.Errorf("cannot get an acceptable response")
 			return
 		}
 
-		econ.responseCh <- response
-	}(errCh)
+		responseCh <- response
+	}(payloadCh, responseCh, errCh)
+
+	defer econ.reponseManager.Delete(id)
 
 	select {
-	case response := <-econ.responseCh:
+	case response := <-responseCh:
 		return &response, nil
 	case err := <-errCh:
 		return nil, err
@@ -219,11 +232,7 @@ func (econ *Econ) WaitResponse(
 }
 
 // Send a payload then wait for its response
-func (econ *Econ) SendAndWaitResponse(
-	payload string,
-	successMessage string,
-	failMessage string,
-) (*EconResponse, error) {
+func (econ *Econ) SendAndWaitResponse(payload string, successMessage string, failMessage string) (*EconResponse, error) {
 	err := econ.Send(payload)
 	if err != nil {
 		return nil, err
@@ -259,6 +268,7 @@ func (econ *Econ) Disconnect() error {
 	return (*econ.conn).Close()
 }
 
+// Indefinitely try to reconnect to the econ server
 func (econ *Econ) Reconnect() error {
 	Debug("waiting for %s", econ.address())
 

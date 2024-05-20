@@ -74,8 +74,11 @@ func NewEconEventManager() *EconEventManager {
 	}
 }
 
-// Returns a an event entry for the events registry
+// Returns an event entry for the events registry
 func (em *EconEventManager) Entry(name string) *EconEventManagerEntry {
+	em.mu.Lock()
+	defer em.mu.Unlock()
+
 	return em.events[name]
 }
 
@@ -93,8 +96,16 @@ func (em *EconEventManager) Register(event *EconEvent) error {
 	return nil
 }
 
+// Delete an event
+func (em *EconEventManager) Delete(name string) {
+	em.mu.Lock()
+	defer em.mu.Unlock()
+
+	delete(em.events, name)
+}
+
 // Call every matching event
-func (em *EconEventManager) Call(eventPayload string) {
+func (em *EconEventManager) Handle(eventPayload string) {
 	em.mu.Lock()
 	defer em.mu.Unlock()
 

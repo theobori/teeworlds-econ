@@ -6,9 +6,19 @@ var (
 	EconKickFailMessage = "server: invalid client id to kick"
 )
 
-// Teeworlds kick command
-func (econ *Econ) Kick(id uint8, reason string) (*EconResponse, error) {
+// DDNet kick command
+var DDNetKick = func(econ *Econ, arguments ...any) (*EconResponse, error) {
 	var m string
+
+	id, ok := arguments[0].(int)
+	if !ok {
+		return nil, fmt.Errorf("invalid id type")
+	}
+
+	reason, ok := arguments[1].(string)
+	if !ok {
+		return nil, fmt.Errorf("invalid reason type")
+	}
 
 	payload := fmt.Sprintf("kick %d", id)
 

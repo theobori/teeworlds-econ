@@ -28,10 +28,12 @@ func defaultEcon() *Econ {
 func econConnectAndAuth(econ *Econ, t *testing.T) *Econ {
 	if err := econ.Connect(); err != nil {
 		t.Error(err)
+		return econ
 	}
 
 	if _, err := econ.Authenticate(); err != nil {
 		t.Error(err)
+		return econ
 	}
 
 	return econ
@@ -45,19 +47,41 @@ func TestEconConnect(t *testing.T) {
 }
 
 // Testing that we receive an error
-func TestEconKick(t *testing.T) {
+func TestEconDDNetKick(t *testing.T) {
 	econ := econConnectAndAuth(defaultEcon(), t)
 
-	if r, err := econ.Kick(0, "reason"); err != nil || r.State {
+	command := EconCommand{
+		Name:            "ddnet_kick",
+		ArgumentsAmount: 2,
+		Func:            DDNetKick,
+	}
+
+	if err := econ.CommandManager.Register(&command); err != nil {
+		t.Error(err)
+	}
+
+	r, err := econ.CommandManager.Exec(econ, "ddnet_kick", 0, "abuse")
+	if err != nil || r.State {
 		t.Error(err)
 	}
 }
 
 // Testing that we receive an error
-func TestEconBan(t *testing.T) {
+func TestEconDDNetBan(t *testing.T) {
 	econ := econConnectAndAuth(defaultEcon(), t)
 
-	if r, err := econ.Ban("3", 10, "reason"); err != nil || r.State {
+	command := EconCommand{
+		Name:            "ddnet_ban",
+		ArgumentsAmount: 3,
+		Func:            DDNetBan,
+	}
+
+	if err := econ.CommandManager.Register(&command); err != nil {
+		t.Error(err)
+	}
+
+	r, err := econ.CommandManager.Exec(econ, "ddnet_ban", "0", 10, "block")
+	if err != nil || r.State {
 		t.Error(err)
 	}
 }

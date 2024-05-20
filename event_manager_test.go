@@ -25,8 +25,8 @@ func TestEconEventManager(t *testing.T) {
 		t.Errorf("Invalid number of registered events")
 	}
 
-	em.Call("chat: hello_world1")
-	em.Call("chat: hello_world2")
+	em.Handle("chat: hello_world1")
+	em.Handle("chat: hello_world2")
 
 	entry := em.Entry("playerChat")
 	if entry == nil {
