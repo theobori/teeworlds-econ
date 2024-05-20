@@ -1,6 +1,10 @@
 package teeworldsecon
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/theobori/teeworlds-econ/internal"
+)
 
 type EconResponseManager struct {
 	id         int
@@ -41,9 +45,9 @@ func (erm *EconResponseManager) Send(payload string) {
 	for id, ch := range erm.payloadsCh {
 		select {
 		case ch <- payload:
-			Debug("Sent payload to channel with id %d", id)
+			teeworldsecon.Debug("Sent payload to channel with id %d", id)
 		default:
-			Debug("Channel with id %d is blocked or closed", id)
+			teeworldsecon.Debug("Channel with id %d is blocked or closed", id)
 		}
 	}
 }

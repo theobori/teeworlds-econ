@@ -6,6 +6,8 @@ import (
 	"net"
 	"regexp"
 	"time"
+
+	"github.com/theobori/teeworlds-econ/internal"
 )
 
 const (
@@ -268,7 +270,7 @@ func (econ *Econ) Disconnect() error {
 
 // Indefinitely try to reconnect to the econ server
 func (econ *Econ) Reconnect() error {
-	Debug("waiting for %s", econ.address())
+	teeworldsecon.Debug("waiting for %s", econ.address())
 
 	for {
 		err := econ.Connect()
