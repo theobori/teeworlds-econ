@@ -54,6 +54,8 @@ You can also take a look at [`command_kick.go`](./command_kick.go) and [`command
 ### Authenticate to the econ server
 
 ```go
+package main
+
 import twecon "github.com/theobori/teeworlds-econ"
 
 func main() {
@@ -155,6 +157,8 @@ func main() {
 ### Event handler for player messages
 
 ```go
+package main
+
 import twecon "github.com/theobori/teeworlds-econ"
 
 func main() {
