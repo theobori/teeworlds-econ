@@ -204,9 +204,9 @@ func main() {
 
     // Custom in-game chatbot
 	chatbot := twecon.EconEvent{
-		"player_chat_bot",
-		"chat: .*:.*: .*",
-		func(econ *twecon.Econ, eventPayload string) any {
+		Name: "player_chat_bot",
+		Regex: "chat: .*:.*: .*",
+		Func: func(econ *twecon.Econ, eventPayload string) any {
 			re := regexp.MustCompile(`chat: .*:(.*): (.*)`)
 			matches := re.FindStringSubmatch(eventPayload)
 
