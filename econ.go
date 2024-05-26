@@ -48,9 +48,9 @@ func NewEcon(config *EconConfig) *Econ {
 	}
 }
 
-// Set the config value
-func (econ *Econ) SetEconConfig(config *EconConfig) {
-	econ.config = config
+// Get a copy of the econ configuration
+func (econ *Econ) Config() EconConfig {
+	return *econ.config
 }
 
 // Return a formatted address of format 'host:port'
@@ -105,7 +105,7 @@ func (econ *Econ) Connect() error {
 }
 
 // Listening the server events
-func (econ *Econ) listenEvents()  {
+func (econ *Econ) listenEvents() {
 	if econ.conn == nil {
 		teeworldsecon.Debug("missing connection")
 	}
