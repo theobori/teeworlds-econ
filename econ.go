@@ -30,8 +30,8 @@ type Econ struct {
 	EventManager *EconEventManager
 	// Command manager
 	CommandManager *EconCommandManager
-	// Reponse manager
-	reponseManager *EconResponseManager
+	// Response manager
+	responseManager *EconResponseManager
 	// Payload manager
 	payloadManager *EconResponseManager
 }
@@ -43,7 +43,7 @@ func NewEcon(config *EconConfig) *Econ {
 		conn:           nil,
 		EventManager:   NewEconEventManager(),
 		CommandManager: NewEconCommandManager(),
-		reponseManager: NewEconResponseManager(),
+		responseManager: NewEconResponseManager(),
 		payloadManager: NewEconResponseManager(),
 	}
 }
@@ -117,7 +117,7 @@ func (econ *Econ) listenEvents() {
 		// Send to the event channels if needed
 		econ.payloadManager.Send(line)
 		// Send to the reponse channels if needed
-		econ.reponseManager.Send(line)
+		econ.responseManager.Send(line)
 	}
 
 	err := scanner.Err()
@@ -164,7 +164,7 @@ func (econ *Econ) WaitResponse(successMessage string, failMessage string) (*Econ
 	responseCh := make(chan EconResponse, 1)
 	payloadCh := make(chan string, 1)
 
-	id := econ.reponseManager.Add(payloadCh)
+	id := econ.responseManager.Add(payloadCh)
 
 	go func(
 		payloadCh chan string,
@@ -195,7 +195,7 @@ func (econ *Econ) WaitResponse(successMessage string, failMessage string) (*Econ
 		responseCh <- response
 	}(payloadCh, responseCh)
 
-	defer econ.reponseManager.Delete(id)
+	defer econ.responseManager.Delete(id)
 
 	select {
 	case response := <-responseCh:

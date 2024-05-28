@@ -10,7 +10,7 @@ clean:
 	go clean -testcache
 
 test: clean
-	go test  -v
+	go test -v ./...
 
 .PHONY: \
 	fmt \
